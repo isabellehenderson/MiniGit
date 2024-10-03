@@ -1,7 +1,5 @@
 # MiniGit Repository System
 
-# Mini-Git Repository System
-
 Mini-Git is a simplified version control system that simulates basic Git functionality. This project provides a command-line interface for managing repositories, making commits, and synchronizing between repositories.
 
 ## Features
