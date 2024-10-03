@@ -1,91 +1,279 @@
 import java.util.*;
+import java.text.SimpleDateFormat;
 
-// A program to work with Mini-Git. Manages the state of repositories and allows for all
-// operations defined in Mini-Git.
-public class Client {
-    private static List<String> ops = new ArrayList<>();
+// This class represents a repository version control systems that manages a series of commits. It
+// uses user input to determine how to modify and/or retrieve information about the repository.
+public class Repository {
+    private String name;
+    private Commit head;
 
-    public static void main(String[] args) {
-        Collections.addAll(ops, "create", "head", "history", "commit", "drop",
-                           "synchronize", "quit");
-        Scanner console = new Scanner(System.in);
-        Map<String, Repository> repos = new HashMap<>();
-        String op = "";
-        String name = "";
-
-        intro();
-
-        while (!op.equalsIgnoreCase("quit")) {
-            System.out.println("Available repositories: ");
-            for (Repository repo : repos.values()) {
-                System.out.println("\t" + repo);
-            }
-            System.out.println("Operations: " + ops);
-            System.out.print("Enter operation and repository: ");
-            String[] input = console.nextLine().split("\\s+");
-            op = input[0];
-            name = input.length > 1 ? input[1] : "";
-            while (!ops.contains(op) || (!op.equalsIgnoreCase("create") &&
-                    !op.equalsIgnoreCase("quit") &&
-                    !repos.containsKey(name))) {
-                System.out.println("  **ERROR**: Operation or repository not recognized.");
-                System.out.print("Enter operation and repository: ");
-                input = console.nextLine().split("\\s+");
-                op = input[0];
-                name = input.length > 1 ? input[1] : "";
-            }
-
-            Repository currRepo = repos.get(name);
-            op = op.toLowerCase();
-            if (op.equalsIgnoreCase("create")) {
-                if (currRepo != null) {
-                    System.out.println("  **ERROR**: Repository with that name already exists.");
-                } else {
-                    Repository newRepo = new Repository(name);
-                    repos.put(name, newRepo);
-                    System.out.println("  New repository created: " + newRepo);
-                }
-            } else if (op.equalsIgnoreCase("head")) {
-                System.out.println(currRepo.getRepoHead());
-            } else if (op.equalsIgnoreCase("history")) {
-                System.out.print("How many commits back? ");
-                int nHist = console.nextInt();
-                console.nextLine();
-                System.out.println(currRepo.getHistory(nHist));
-            } else if (op.equalsIgnoreCase("commit")) {
-                System.out.print("Enter commit message: ");
-                String message = console.nextLine();
-                System.out.println("  New commit: " + currRepo.commit(message));
-            } else if (op.equalsIgnoreCase("drop")) {
-                System.out.print("Enter ID to drop: ");
-                String idDrop = console.nextLine();
-                if (currRepo.drop(idDrop)) {
-                    System.out.println("  Successfully dropped " + idDrop);
-                } else {
-                    System.out.println("  No commit dropped!");
-                }
-            } else if (op.equalsIgnoreCase("synchronize")) {
-                System.out.print("Which repository would you like to " +
-                        "synchronize into the given one? ");
-                String repo = console.nextLine();
-                if (repo.equals(name)) {
-                    System.out.println("Cannot synchronize the same repositories!");
-                } else if (!repos.containsKey(repo)) {
-                    System.out.println("Repository does not exist!");
-                } else {
-                    currRepo.synchronize(repos.get(repo));
-                }
-            }
-            System.out.println();
+    // Constructs a repository with the specified name.
+    // Exceptions: 
+    // - If the name is null or empty, an IllegalArgumentException is thrown.
+    // Parameters:
+    // - name: The specified name of the repository.
+    public Repository(String name){
+        if(name == null || name.isEmpty()){
+            throw new IllegalArgumentException();
         }
+        this.name = name;
+        this.head = null;
     }
 
-    // Prints out an introduction to the Mini-Git test client.
-    public static void intro() {
-        System.out.println("Welcome to the Mini-Git test client!");
-        System.out.println("Use this program to test your Mini-Git repository implemenation.");
-        System.out.println("Make sure to test all operations in all cases --");
-        System.out.println("some cases are particularly tricky.");
-        System.out.println();
+    // Returns the ID of the current head of this repository.
+    // Returns:
+    // - String: The ID of the current head of the repository. If there are no commits, returns 
+    // null.
+    public String getRepoHead(){
+        if(head == null){
+            return null;
+        }
+
+        return head.id;
+    }
+
+    // Returns the number of commits in the repository.
+    // Returns:
+    // - int: The size of the repository.
+    public int getRepoSize(){
+        int size = 0;
+        Commit temp = head;
+        while(temp != null){
+            size++;
+            temp = temp.past;
+        }
+
+        return size;
+    }
+
+    // Returns a message representing the state of the repository.
+    // Returns:
+    // - String: The message representing the commit information in the repository. If there are 
+    // no commits in the repository, it is indicated in the message.
+    public String toString(){
+        if(getRepoSize() <= 0){
+            return name + " - No commits";
+        }
+        return name + " - Current head: " + head.toString();
+    }
+
+    // Returns whether or not a commit with the target ID is in the repository.
+    // Parameters:
+    // - targetId: The commit ID to check for in the repository.
+    // Returns:
+    // - boolean: Returns true if the commit with the target ID is found, false if not.
+    public boolean contains(String targetId){
+        Commit temp = head;
+        while (temp != null) {
+            if (temp.id.equals(targetId)) {
+                return true;
+            }
+            temp = temp.past;
+        }
+
+        return false;
+    }
+
+    // Returns a message consisting of the most recent specified amount of commits in this 
+    // repository, with the most recent first. If the specified amount is greater than the
+    // number of commits, the whole history is returned.
+    // Parameters: 
+    // - n: The amount of commits from the history to be returned.
+    // Returns:
+    // - String: The repository history containing the indicated number of commits.
+    // Exceptions:
+    // - If the specified number of commits is non-positive, an IllegalArgumentException is thrown.
+    public String getHistory(int n){
+        if(n <= 0){
+            throw new IllegalArgumentException();
+        }
+
+        if (n > getRepoSize()) {
+            n = getRepoSize();
+        }
+
+        Commit temp = head;
+        String history = "";
+        boolean spacer = false;
+
+        for(int i = 0; i < n && temp != null; i++){
+            if (spacer) {
+                history += "\n";
+            } else {
+                spacer = true;
+            }   
+            
+            history += temp.toString();
+            temp = temp.past;
+        }
+
+        return history;
+    }
+
+    // Creates a new commit with the given message, adding it to become the head of the
+    // repository while preserving the history behind it.
+    // Parameters:
+    // - message: The message to be associated with the commit.
+    // Returns:
+    // - String: The ID of the new commit.
+    public String commit(String message){
+        Commit newCommit = new Commit(message, head);
+        head = newCommit;
+        return head.id;
+    }
+
+    // Removes the commit with the specified ID from this repository, maintaining the rest
+    // of the history. If there is no matching commit ID, nothing is changed.
+    // Parameters:
+    // - targetID: The ID of the commit to be removed from the repository.
+    // Returns:
+    // - boolean: Returns true if the commit was successfully dropped, and false if commit ID was 
+    // not found.
+    public boolean drop(String targetId){
+        if(getRepoSize() <= 0){
+            return false;
+        }
+
+        if(head.id.equals(targetId)){
+            head = head.past;
+            return true;
+        }
+
+        Commit temp = head;
+        while (temp.past != null && !temp.past.id.equals(targetId)) {
+            temp = temp.past;
+        }
+    
+        if (temp.past != null) {
+            temp.past = temp.past.past;
+            return true; 
+        }                                                  
+    
+        return false;
+    }
+
+    // Takes all the commits in the other repository and moves them into this repository,
+    // combining the two repository histories such that chronological order is preserved. If the 
+    // other repository is empty, nothing is changed.
+    // Parameters:
+    // - other: The repository to be merged with the current repository.
+    public void synchronize(Repository other){
+        if(head == null) {
+            head = other.head;    
+            other.head = null;                                                                                                     
+        } else if (head != null && other.head != null) { 
+
+            Commit temp = head;
+            // front case
+            if (head.timeStamp < other.head.timeStamp) {
+                head = other.head;
+                other.head = other.head.past;
+                head.past = temp;
+            }
+
+            Commit curr = head;
+            // middle case
+            while(other.head != null && curr.past != null) {
+                if (curr.past.timeStamp > other.head.timeStamp){
+                    curr = curr.past;
+                } else {
+                    Commit target = other.head;
+                    other.head = other.head.past;
+                    target.past = curr.past;
+                    curr.past = target;
+                    target = other.head;
+                }
+            }
+
+            // end case
+            while(other.head != null){
+                curr.past = other.head;
+                curr = curr.past;
+                other.head = other.head.past;
+            }
+        }
+    }  
+
+    /**
+     * DO NOT MODIFY
+     * A class that represents a single commit in the repository.
+     * Commits are characterized by an identifier, a commit message,
+     * and the time that the commit was made. A commit also stores
+     * a reference to the immediately previous commit if it exists.
+     *
+     * Staff Note: You may notice that the comments in this 
+     * class openly mention the fields of the class. This is fine 
+     * because the fields of the Commit class are public. In general, 
+     * be careful about revealing implementation details!
+     */
+    public class Commit {
+
+        private static int currentCommitID;
+
+        /**
+         * The time, in milliseconds, at which this commit was created.
+         */
+        public final long timeStamp;
+
+        /**
+         * A unique identifier for this commit.
+         */
+        public final String id;
+
+        /**
+         * A message describing the changes made in this commit.
+         */
+        public final String message;
+
+        /**
+         * A reference to the previous commit, if it exists. Otherwise, null.
+         */
+        public Commit past;
+
+        /**
+         * Constructs a commit object. The unique identifier and timestamp
+         * are automatically generated.
+         * @param message A message describing the changes made in this commit.
+         * @param past A reference to the commit made immediately before this
+         *             commit.
+         */
+        public Commit(String message, Commit past) {
+            this.id = "" + currentCommitID++;
+            this.message = message;
+            this.timeStamp = System.currentTimeMillis();
+            this.past = past;
+        }
+
+        /**
+         * Constructs a commit object with no previous commit. The unique
+         * identifier and timestamp are automatically generated.
+         * @param message A message describing the changes made in this commit.
+         */
+        public Commit(String message) {
+            this(message, null);
+        }
+
+        /**
+         * Returns a string representation of this commit. The string
+         * representation consists of this commit's unique identifier,
+         * timestamp, and message, in the following form:
+         *      "[identifier] at [timestamp]: [message]"
+         * @return The string representation of this collection.
+         */
+        @Override
+        public String toString() {
+            SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd 'at' HH:mm:ss z");
+            Date date = new Date(timeStamp);
+
+            return id + " at " + formatter.format(date) + ": " + message;
+        }
+
+        /**
+        * Resets the IDs of the commit nodes such that they reset to 0.
+        * Primarily for testing purposes.
+        */
+        public static void resetIds() {
+            Commit.currentCommitID = 0;
+        }
     }
 }
